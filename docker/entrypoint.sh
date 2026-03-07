@@ -1,16 +1,15 @@
 #!/bin/sh
+set -e
 
-echo "Waiting for database..."
-
-until pg_isready -h db -p 5432 -U "$POSTGRES_USER"
-do
+echo "Waiting for PostgreSQL..."
+until pg_isready -h "${DATABASE_HOST:-db}" -p "${DATABASE_PORT:-5432}" -U "${POSTGRES_USER:-url_shortener}"; do
   sleep 2
 done
 
-echo "Database is ready!"
-
-echo "Running migrations..."
-alembic upgrade head
-
-echo "Starting application..."
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+echo "Starting API..."
+exec uvicorn app.main:app \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --proxy-headers \
+  --forwarded-allow-ips "${FORWARDED_ALLOW_IPS:-127.0.0.1}" \
+  --workers "${UVICORN_WORKERS:-1}"

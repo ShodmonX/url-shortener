@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>__PROJECT_NAME__ API Docs</title>
+    <meta
+      name="description"
+      content="Modern API documentation for the URL Shortener backend built with FastAPI, PostgreSQL, Redis, and RabbitMQ."
+    />
+    <link rel="stylesheet" href="/static/css/docs.css" />
+    <script defer src="/static/js/docs.js"></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="#overview" aria-label="Jump to overview">
+          <span class="brand-mark">/</span>
+          <span class="brand-copy">
+            <span class="eyebrow">API Documentation</span>
+            <strong>__PROJECT_NAME__</strong>
+          </span>
+        </a>
+        <div class="topbar-actions">
+          <a class="button button-muted" href="#quick-start">Quick Start</a>
+          <a class="button" href="/docs">Swagger UI</a>
+        </div>
+      </header>
+
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="sidebar-card">
+            <p class="sidebar-label">Base URL</p>
+            <code>__PUBLIC_BASE_URL__</code>
+          </div>
+          <nav class="toc" aria-label="Documentation sections">
+            <a href="#overview">Overview</a>
+            <a href="#quick-start">Quick Start</a>
+            <a href="#authentication">Authentication</a>
+            <a href="#endpoints">API Endpoints</a>
+            <a href="#ownership">Anonymous vs Authenticated</a>
+            <a href="#project">Project Info</a>
+          </nav>
+          <div class="sidebar-card">
+            <p class="sidebar-label">Core stack</p>
+            <ul class="stack-list">
+              <li>FastAPI</li>
+              <li>PostgreSQL</li>
+              <li>Redis</li>
+              <li>RabbitMQ</li>
+              <li>Docker</li>
+            </ul>
+          </div>
+        </aside>
+
+        <main class="content">
+          <section id="overview" class="hero panel">
+            <div class="hero-copy">
+              <p class="eyebrow">Overview</p>
+              <h1>Short links, ownership, and analytics in one API.</h1>
+              <p class="lede">
+                URL Shortener API that allows users to generate short links, track analytics,
+                manage personal URLs, and create anonymous links that still redirect normally.
+              </p>
+            </div>
+            <div class="hero-grid">
+              <article class="info-card">
+                <p class="card-title">What it does</p>
+                <p>
+                  Create collision-safe short URLs, attach them to authenticated users when
+                  needed, and collect click analytics without putting write pressure on the
+                  redirect path.
+                </p>
+              </article>
+              <article class="info-card">
+                <p class="card-title">How it is used</p>
+                <p>
+                  Register or log in for ownership features, or call the create-link endpoint
+                  anonymously for one-off short links managed by a returned manage token.
+                </p>
+              </article>
+              <article class="info-card">
+                <p class="card-title">Interactive docs</p>
+                <p>
+                  This page is the custom landing page. Swagger UI remains available at
+                  <a href="/docs"><code>/docs</code></a> for schema-driven exploration.
+                </p>
+              </article>
+            </div>
+          </section>
+
+          <section id="quick-start" class="panel section">
+            <div class="section-heading">
+              <p class="eyebrow">Quick Start</p>
+              <h2>Go from account creation to analytics in six steps.</h2>
+              <p>
+                These examples use the API prefix <code>__API_PREFIX__</code> and the configured
+                public base URL <code>__PUBLIC_BASE_URL__</code>.
+              </p>
+            </div>
+
+            <div class="steps">
+              <article class="step-card">
+                <div class="step-index">1</div>
+                <div class="step-body">
+                  <h3>Register a user</h3>
+                  <p>Create an account and receive both access and refresh tokens.</p>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl -X POST __PUBLIC_BASE_URL____API_PREFIX__/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "alice@example.com",
+    "password": "StrongPass123!"
+  }'</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="step-card">
+                <div class="step-index">2</div>
+                <div class="step-body">
+                  <h3>Log in</h3>
+                  <p>Use the login endpoint when you need a fresh token pair for an existing user.</p>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl -X POST __PUBLIC_BASE_URL____API_PREFIX__/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "alice@example.com",
+    "password": "StrongPass123!"
+  }'</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="step-card">
+                <div class="step-index">3</div>
+                <div class="step-body">
+                  <h3>Store the access token</h3>
+                  <p>Send it on protected endpoints with the standard bearer header.</p>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>Authorization: Bearer ACCESS_TOKEN</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="step-card">
+                <div class="step-index">4</div>
+                <div class="step-body">
+                  <h3>Create a short URL</h3>
+                  <p>
+                    The same endpoint works for both anonymous and authenticated clients. If a
+                    bearer token is present, the new URL is owned by that user.
+                  </p>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl -X POST __PUBLIC_BASE_URL____API_PREFIX__/links \
+  -H "Authorization: Bearer ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/pricing",
+    "custom_alias": "pricing-2026"
+  }'</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="step-card">
+                <div class="step-index">5</div>
+                <div class="step-body">
+                  <h3>Redirect with the short code</h3>
+                  <p>Resolve the code directly from the root path.</p>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl -i __PUBLIC_BASE_URL__/pricing-2026</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="step-card">
+                <div class="step-index">6</div>
+                <div class="step-body">
+                  <h3>Fetch statistics</h3>
+                  <p>Owned URLs expose richer stats through the user-scoped stats endpoint.</p>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl __PUBLIC_BASE_URL____API_PREFIX__/urls/URL_ID/stats?days=30 \
+  -H "Authorization: Bearer ACCESS_TOKEN"</code></pre>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section id="authentication" class="panel section">
+            <div class="section-heading">
+              <p class="eyebrow">Authentication</p>
+              <h2>JWT access and refresh tokens, plus manage tokens for link-level operations.</h2>
+            </div>
+
+            <div class="auth-grid">
+              <article class="info-card">
+                <p class="card-title">Access token</p>
+                <p>
+                  Short-lived JWT used for authenticated endpoints such as
+                  <code>/users/me</code>, <code>/users/me/urls</code>, and
+                  <code>/urls/{id}/stats</code>.
+                </p>
+                <div class="code-inline">
+                  <code>Authorization: Bearer ACCESS_TOKEN</code>
+                </div>
+              </article>
+
+              <article class="info-card">
+                <p class="card-title">Refresh token</p>
+                <p>
+                  Long-lived JWT stored in an <code>HttpOnly</code> cookie by default and rotated
+                  through <code>POST __API_PREFIX__/auth/refresh</code>. JSON body fallback is still
+                  accepted for transitional clients.
+                </p>
+              </article>
+
+              <article class="info-card">
+                <p class="card-title">Manage token</p>
+                <p>
+                  Returned when a link is created. It is sent as <code>X-Manage-Token</code> for
+                  manage-token endpoints like preview, QR retrieval, and analytics by short code.
+                </p>
+                <div class="code-inline">
+                  <code>X-Manage-Token: MANAGE_TOKEN</code>
+                </div>
+              </article>
+            </div>
+
+            <div class="code-block wide">
+              <button class="copy-button" type="button">Copy</button>
+              <pre><code>curl -X POST __PUBLIC_BASE_URL____API_PREFIX__/auth/refresh \
+  -H "Cookie: refresh_token=REFRESH_TOKEN"</code></pre>
+            </div>
+          </section>
+
+          <section id="endpoints" class="panel section">
+            <div class="section-heading">
+              <p class="eyebrow">API Endpoints</p>
+              <h2>Important endpoints with request and response examples.</h2>
+            </div>
+
+            <div class="endpoint-group">
+              <h3>Auth and identity</h3>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-post">POST</span>
+                  <code>__API_PREFIX__/auth/register</code>
+                </div>
+                <p>Create a new user account, receive an access token, and set the refresh-token cookie.</p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "email": "alice@example.com",
+  "password": "StrongPass123!"
+}</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "access_token": "eyJhbGciOi...",
+  "refresh_token": null,
+  "token_type": "bearer",
+  "access_token_expires_at": "2026-03-07T10:15:00Z",
+  "refresh_token_expires_at": "2026-04-06T10:00:00Z",
+  "user": {
+    "id": "81c1f6af-dfd4-4ad5-a3c4-8ba8dcf5e408",
+    "email": "alice@example.com",
+    "created_at": "2026-03-07T10:00:00Z"
+  }
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-post">POST</span>
+                  <code>__API_PREFIX__/auth/login</code>
+                </div>
+                <p>Authenticate an existing user, issue a fresh access token, and rotate the refresh-token cookie.</p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "email": "alice@example.com",
+  "password": "StrongPass123!"
+}</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "access_token": "eyJhbGciOi...",
+  "refresh_token": null,
+  "token_type": "bearer",
+  "access_token_expires_at": "2026-03-07T12:15:00Z",
+  "refresh_token_expires_at": "2026-04-06T12:00:00Z",
+  "user": {
+    "id": "81c1f6af-dfd4-4ad5-a3c4-8ba8dcf5e408",
+    "email": "alice@example.com",
+    "created_at": "2026-03-07T10:00:00Z"
+  }
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-post">POST</span>
+                  <code>__API_PREFIX__/auth/refresh</code>
+                </div>
+                <p>Rotate the refresh-token cookie and issue a new access token pair.</p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>Cookie: refresh_token=REFRESH_TOKEN
+
+Optional body fallback:
+{
+  "refresh_token": "REFRESH_TOKEN"
+}</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "access_token": "eyJhbGciOi...",
+  "refresh_token": null,
+  "token_type": "bearer",
+  "access_token_expires_at": "2026-03-07T13:15:00Z",
+  "refresh_token_expires_at": "2026-04-06T13:00:00Z",
+  "user": {
+    "id": "81c1f6af-dfd4-4ad5-a3c4-8ba8dcf5e408",
+    "email": "alice@example.com",
+    "created_at": "2026-03-07T10:00:00Z"
+  }
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-get">GET</span>
+                  <code>__API_PREFIX__/users/me</code>
+                </div>
+                <p>Return the currently authenticated user's profile.</p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl __PUBLIC_BASE_URL____API_PREFIX__/users/me \
+  -H "Authorization: Bearer ACCESS_TOKEN"</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "id": "81c1f6af-dfd4-4ad5-a3c4-8ba8dcf5e408",
+  "email": "alice@example.com",
+  "created_at": "2026-03-07T10:00:00Z"
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div class="endpoint-group">
+              <h3>Link creation and manage-token flows</h3>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-get">GET</span>
+                  <code>__API_PREFIX__/links/alias-availability</code>
+                </div>
+                <p>
+                  Check whether a custom alias can be used before creating a short link. The same
+                  validation rules as link creation are applied.
+                </p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl "__PUBLIC_BASE_URL____API_PREFIX__/links/alias-availability?alias=pricing-2026"</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "alias": "pricing-2026",
+  "available": true,
+  "reason": null
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-post">POST</span>
+                  <code>__API_PREFIX__/links</code>
+                </div>
+                <p>
+                  Create a short link. Works anonymously or with bearer auth. A manage token is
+                  returned for link-level operations regardless of ownership.
+                </p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "url": "https://example.com/pricing",
+  "custom_alias": "pricing-2026",
+  "expires_at": "2026-12-31T23:59:59Z"
+}</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "short_code": "pricing-2026",
+  "short_url": "__PUBLIC_BASE_URL__/pricing-2026",
+  "url": "https://example.com/pricing",
+  "custom_alias": true,
+  "expires_at": "2026-12-31T23:59:59Z",
+  "metadata_status": "pending",
+  "created_at": "2026-03-07T10:05:00Z",
+  "manage_token": "e61af7d1d20d4a4f..."
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-get">GET</span>
+                  <code>__API_PREFIX__/links/{short_code}</code>
+                </div>
+                <p>Fetch link details using the manage token returned at creation time.</p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl __PUBLIC_BASE_URL____API_PREFIX__/links/pricing-2026 \
+  -H "X-Manage-Token: MANAGE_TOKEN"</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "short_code": "pricing-2026",
+  "short_url": "__PUBLIC_BASE_URL__/pricing-2026",
+  "url": "https://example.com/pricing",
+  "expires_at": "2026-12-31T23:59:59Z",
+  "custom_alias": true,
+  "click_count": 17,
+  "last_clicked_at": "2026-03-07T12:42:00Z",
+  "metadata_status": "ready",
+  "preview_metadata": {
+    "title": "Pricing",
+    "description": "View current plans."
+  },
+  "has_qr_code": true,
+  "created_at": "2026-03-07T10:05:00Z",
+  "updated_at": "2026-03-07T10:05:05Z"
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-get">GET</span>
+                  <code>__API_PREFIX__/links/{short_code}/preview</code>
+                </div>
+                <p>Return fetched preview metadata for the target URL.</p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl __PUBLIC_BASE_URL____API_PREFIX__/links/pricing-2026/preview \
+  -H "X-Manage-Token: MANAGE_TOKEN"</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "short_code": "pricing-2026",
+  "status": "ready",
+  "metadata": {
+    "title": "Pricing",
+    "description": "View current plans.",
+    "image": "https://example.com/og.png"
+  },
+  "updated_at": "2026-03-07T10:05:05Z"
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-get">GET</span>
+                  <code>__API_PREFIX__/links/{short_code}/analytics</code>
+                </div>
+                <p>Read analytics for a link by short code using the manage token flow.</p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl "__PUBLIC_BASE_URL____API_PREFIX__/links/pricing-2026/analytics?days=30" \
+  -H "X-Manage-Token: MANAGE_TOKEN"</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "short_code": "pricing-2026",
+  "total_clicks": 17,
+  "last_clicked_at": "2026-03-07T12:42:00Z",
+  "daily": [
+    {
+      "date": "2026-03-07",
+      "clicks": 17,
+      "unique_visitors": 15
+    }
+  ],
+  "recent_events": [
+    {
+      "occurred_at": "2026-03-07T12:42:00Z",
+      "referer": "https://news.ycombinator.com/",
+      "country_code": "US",
+      "cache_status": "redis"
+    }
+  ]
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div class="endpoint-group">
+              <h3>User dashboard and ownership endpoints</h3>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-get">GET</span>
+                  <code>__API_PREFIX__/users/me/urls</code>
+                </div>
+                <p>Return paginated URLs created by the current authenticated user only.</p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl "__PUBLIC_BASE_URL____API_PREFIX__/users/me/urls?page=1&page_size=20" \
+  -H "Authorization: Bearer ACCESS_TOKEN"</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "items": [
+    {
+      "id": "81c1f6af-dfd4-4ad5-a3c4-8ba8dcf5e408",
+      "original_url": "https://example.com/pricing",
+      "short_code": "pricing-2026",
+      "created_at": "2026-03-07T10:05:00Z",
+      "expires_at": "2026-12-31T23:59:59Z",
+      "total_clicks": 17
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 20,
+    "total": 1,
+    "has_next": false
+  }
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-get">GET</span>
+                  <code>__API_PREFIX__/urls/{url_id}/stats</code>
+                </div>
+                <p>
+                  Return owner-only statistics for a specific URL. Non-owners receive a not-found
+                  response to avoid leaking resource existence.
+                </p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl "__PUBLIC_BASE_URL____API_PREFIX__/urls/81c1f6af-dfd4-4ad5-a3c4-8ba8dcf5e408/stats?days=30" \
+  -H "Authorization: Bearer ACCESS_TOKEN"</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "id": "81c1f6af-dfd4-4ad5-a3c4-8ba8dcf5e408",
+  "short_code": "pricing-2026",
+  "original_url": "https://example.com/pricing",
+  "total_clicks": 17,
+  "created_at": "2026-03-07T10:05:00Z",
+  "expires_at": "2026-12-31T23:59:59Z",
+  "last_clicked_at": "2026-03-07T12:42:00Z",
+  "daily_clicks": [
+    {
+      "date": "2026-03-07",
+      "clicks": 17,
+      "unique_visitors": 15
+    }
+  ],
+  "top_referrers": [
+    {
+      "value": "https://news.ycombinator.com/",
+      "count": 6
+    }
+  ],
+  "top_countries": [
+    {
+      "value": "US",
+      "count": 9
+    }
+  ],
+  "top_devices": [
+    {
+      "value": "desktop",
+      "count": 12
+    }
+  ]
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div class="endpoint-group">
+              <h3>Redirect and health</h3>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-get">GET</span>
+                  <code>/{short_code}</code>
+                </div>
+                <p>Resolve a short code and return an HTTP 307 redirect to the target URL.</p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl -i __PUBLIC_BASE_URL__/pricing-2026</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>HTTP/1.1 307 Temporary Redirect
+location: https://example.com/pricing</code></pre>
+                  </div>
+                </div>
+              </article>
+
+              <article class="endpoint-card">
+                <div class="endpoint-header">
+                  <span class="method method-get">GET</span>
+                  <code>/healthz</code>
+                </div>
+                <p>Simple readiness endpoint that checks the database and Redis connectivity.</p>
+                <div class="endpoint-grid">
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>curl __PUBLIC_BASE_URL__/healthz</code></pre>
+                  </div>
+                  <div class="code-block">
+                    <button class="copy-button" type="button">Copy</button>
+                    <pre><code>{
+  "status": "ok"
+}</code></pre>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section id="ownership" class="panel section">
+            <div class="section-heading">
+              <p class="eyebrow">Anonymous vs Authenticated URLs</p>
+              <h2>Ownership is optional and determined by whether a bearer token is present.</h2>
+            </div>
+
+            <div class="comparison-grid">
+              <article class="comparison-card">
+                <h3>Anonymous client</h3>
+                <ul class="check-list">
+                  <li>Can create short URLs through <code>POST __API_PREFIX__/links</code>.</li>
+                  <li>Saved with <code>user_id = null</code>.</li>
+                  <li>Redirects work exactly the same as owned links.</li>
+                  <li>Does not appear in any user's <code>/users/me/urls</code> response.</li>
+                  <li>Can still be managed with the returned <code>X-Manage-Token</code>.</li>
+                </ul>
+              </article>
+
+              <article class="comparison-card">
+                <h3>Authenticated client</h3>
+                <ul class="check-list">
+                  <li>Creates the same way, but includes <code>Authorization: Bearer ...</code>.</li>
+                  <li>The new link is attached to the current user.</li>
+                  <li>It appears in <code>GET __API_PREFIX__/users/me/urls</code>.</li>
+                  <li>Owner-only statistics are available at <code>GET __API_PREFIX__/urls/{id}/stats</code>.</li>
+                  <li>Non-owners do not get visibility into another user's URL stats.</li>
+                </ul>
+              </article>
+            </div>
+          </section>
+
+          <section id="project" class="panel section">
+            <div class="section-heading">
+              <p class="eyebrow">Project Info</p>
+              <h2>Service purpose, stack, and repository placeholder.</h2>
+            </div>
+
+            <div class="project-grid">
+              <article class="info-card">
+                <p class="card-title">Purpose</p>
+                <p>
+                  Portfolio-quality backend for shortening URLs, tracking usage, and modeling user
+                  ownership with JWT-based authentication.
+                </p>
+              </article>
+              <article class="info-card">
+                <p class="card-title">Technology stack</p>
+                <p>FastAPI, SQLAlchemy, PostgreSQL, Redis, RabbitMQ, Docker, Alembic.</p>
+              </article>
+              <article class="info-card">
+                <p class="card-title">Repository</p>
+                <p>
+                  Replace this placeholder with your actual repository URL:
+                  <code>https://github.com/your-org/url-shortener</code>
+                </p>
+              </article>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
