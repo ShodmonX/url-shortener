@@ -40,6 +40,8 @@ services:
       db:
         condition: service_healthy
     restart: "no"
+  networks:
+      - url-shortener-local
 
   url-shotener-api:
     build:
@@ -61,6 +63,8 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
+    networks:
+      - url-shortener-local
 
   worker:
     build:
@@ -76,6 +80,8 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    networks:
+        - url-shortener-local
 
   db:
     image: postgres:16-alpine
@@ -91,6 +97,8 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    networks:
+        - url-shortener-local
 
   redis:
     image: redis:7-alpine
@@ -103,6 +111,8 @@ services:
       timeout: 3s
       retries: 10
     restart: unless-stopped
+    networks:
+      - url-shortener-local
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -118,8 +128,17 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    networks:
+      - url-shortener-local
 
 volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
+
+networks:
+  web:
+    external: true
+  url-shortener-local:
+    external: false
+    driver: bridge
