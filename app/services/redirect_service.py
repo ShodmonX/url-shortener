@@ -15,6 +15,7 @@ from app.messaging.jobs import publish_or_fallback
 from app.messaging.rabbitmq import CLICK_TRACK_QUEUE, RabbitMQPublisher
 from app.models import Link
 from app.services.exceptions import LinkExpiredError, LinkNotFoundError
+from app.services.link_service import normalize_datetime
 
 
 def utcnow() -> datetime:
@@ -63,14 +64,15 @@ class RedirectService:
         if link is None:
             raise LinkNotFoundError(short_code)
 
-        if link.expires_at and link.expires_at <= utcnow():
+        expires_at = normalize_datetime(link.expires_at)
+        if expires_at and expires_at <= utcnow():
             raise LinkExpiredError(short_code)
 
         payload = {
             "id": link.id,
             "short_code": link.short_code,
             "long_url": link.long_url,
-            "expires_at": link.expires_at.isoformat() if link.expires_at else None,
+            "expires_at": expires_at.isoformat() if expires_at else None,
         }
         ttl = self._ttl_for_payload(payload)
         await self.redis.set(link_cache_key(short_code), orjson.dumps(payload), ex=ttl)

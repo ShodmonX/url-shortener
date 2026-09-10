@@ -8,7 +8,8 @@ from app.core.config import settings
 from app.db.base import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.db_sync_url)
+# ConfigParser treats percent signs in URL-encoded credentials as interpolation.
+config.set_main_option("sqlalchemy.url", settings.db_sync_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

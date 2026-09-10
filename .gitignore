@@ -136,6 +136,19 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.docker-local/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.sqlite
+*.sqlite-journal
 .envrc
 .venv
 env/

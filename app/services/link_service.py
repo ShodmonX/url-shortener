@@ -56,17 +56,18 @@ class LinkService:
         return max(min(base_ttl, remaining), 1)
 
     async def _cache_link(self, link: Link) -> None:
+        expires_at = normalize_datetime(link.expires_at)
         payload = {
             "id": link.id,
             "short_code": link.short_code,
             "long_url": link.long_url,
             "is_active": link.is_active,
-            "expires_at": link.expires_at.isoformat() if link.expires_at else None,
+            "expires_at": expires_at.isoformat() if expires_at else None,
         }
         await self.redis.set(
             link_cache_key(link.short_code),
             orjson.dumps(payload),
-            ex=self._cache_ttl_for_link(link.expires_at),
+            ex=self._cache_ttl_for_link(expires_at),
         )
         await self.redis.delete(link_negative_cache_key(link.short_code))
 

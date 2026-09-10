@@ -5,8 +5,6 @@ import aio_pika
 import orjson
 from aio_pika import DeliveryMode, ExchangeType, Message, RobustChannel, RobustConnection
 
-from app.core.config import settings
-
 logger = logging.getLogger(__name__)
 
 CLICK_TRACK_QUEUE = "click.track"

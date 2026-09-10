@@ -118,14 +118,14 @@ class Settings(BaseSettings):
     @property
     def db_async_url(self) -> str:
         return (
-            f"postgresql+asyncpg://{self.database_user}:{self.database_password}"
+            f"postgresql+asyncpg://{quote(self.database_user, safe='')}:{quote(self.database_password, safe='')}"
             f"@{self.database_host}:{self.database_port}/{self.database_db}"
         )
 
     @property
     def db_sync_url(self) -> str:
         return (
-            f"postgresql+psycopg://{self.database_user}:{self.database_password}"
+            f"postgresql+psycopg://{quote(self.database_user, safe='')}:{quote(self.database_password, safe='')}"
             f"@{self.database_host}:{self.database_port}/{self.database_db}"
         )
 
@@ -137,7 +137,7 @@ class Settings(BaseSettings):
     def rabbitmq_url(self) -> str:
         encoded_vhost = quote(self.rabbitmq_vhost, safe="")
         return (
-            f"amqp://{self.rabbitmq_user}:{self.rabbitmq_password}"
+            f"amqp://{quote(self.rabbitmq_user, safe='')}:{quote(self.rabbitmq_password, safe='')}"
             f"@{self.rabbitmq_host}:{self.rabbitmq_port}/{encoded_vhost}"
         )
 

@@ -14,8 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN groupadd --system app && useradd --system --gid app --home-dir /app app
 
-COPY requirements.txt .
-RUN pip install --upgrade pip
+COPY requirements.txt requirements-constraints.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=app:app . .

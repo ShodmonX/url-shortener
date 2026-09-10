@@ -1,319 +1,147 @@
 # URL Shortener
 
-Production-oriented URL shortener built with FastAPI, PostgreSQL, Redis, RabbitMQ, and Docker. The implementation is optimized for low-latency redirects, collision-safe code generation, async analytics ingestion, preview enrichment, and horizontal scaling.
+A backend portfolio project built with **Python 3.12, FastAPI, PostgreSQL, Redis, and RabbitMQ**. It supports anonymous and authenticated link creation, cached redirects, and background click analytics and preview enrichment.
+
+PostgreSQL owns persistent data; Redis accelerates reads and rate limiting; RabbitMQ separates worker processing from HTTP responses. The project demonstrates these engineering choices in a local Docker Compose stack. It has no published throughput benchmarks or production availability claims.
+
+Start with [Local Development](#local-development) for Docker setup or [Testing](#testing) for the Python checks.
 
 ## Architecture
 
-```text
-Clients
-  |
-  v
-Load Balancer / CDN
-  |
-  v
-FastAPI API Pods
-  |----------------------------> Redis
-  |                               |- redirect cache
-  |                               |- negative cache
-  |                               |- rate limiting
-  |                               |- sharded analytics counters
-  |
-  |----------------------------> PostgreSQL
-  |                               |- links
-  |                               |- daily aggregates
-  |                               |- click event log
-  |
-  |----------------------------> RabbitMQ
-                                  |- click.track
-                                  |- link.enrich
-                                          |
-                                          v
-                                    Worker Pods
-                                      |- analytics aggregation
-                                      |- metadata fetch
-                                      |- QR generation
+```mermaid
+flowchart LR
+    client[Client] --> api[FastAPI and local TTL cache]
+    api --> db[(PostgreSQL)]
+    api --> redis[(Redis)]
+    api --> rabbit[RabbitMQ]
+    rabbit --> worker[Background worker]
+    redis -->|Fallback jobs| worker
+    worker --> db
+    worker -->|Counters and visitor estimates| redis
+    worker -->|Preview metadata| target[Target website]
+    migrate[Alembic migration job] --> db
 ```
 
-## Why this design
+The API and worker start after healthy dependencies and a successful migration job. `/healthz` checks PostgreSQL and Redis; it does not report RabbitMQ or worker health.
 
-- Redirects are read-heavy, so the hot path is `local cache -> Redis -> PostgreSQL`.
-- Writes from redirects are pushed to RabbitMQ so the redirect response does not wait on analytics storage.
-- Redis absorbs rate limiting and cache traffic, while PostgreSQL stays the source of truth.
-- Workers handle slow or bursty work: click ingestion, QR generation, and metadata fetching.
-- The app is stateless and horizontally scalable behind a load balancer.
+## Core Features
 
-## Folder structure
+- Random short codes, custom aliases, optional expiration, and HTTP 307 redirects.
+- Database-enforced short-code uniqueness with retry on generated-code collisions; reserved aliases are rejected.
+- Anonymous links managed with a returned `X-Manage-Token`; authenticated links also appear in their owner's dashboard endpoints.
+- Registration, login, JWT access tokens, rotating refresh tokens in HttpOnly cookies, and logout.
+- Process-local and Redis redirect caches, short-lived negative caching, and Redis rate limiting.
+- Background click events, daily aggregates, approximate unique visitors, preview metadata, and QR SVG generation.
 
-```text
-app/
-  api/
-    deps.py
-    router.py
-    routes/
-      health.py
-      links.py
-      redirects.py
-  cache/
-    keys.py
-    redis.py
-  core/
-    config.py
-    security.py
-  db/
-    base.py
-    session.py
-  messaging/
-    rabbitmq.py
-  models/
-    click_event.py
-    link.py
-    link_daily_stat.py
-  schemas/
-    link.py
-  services/
-    analytics_service.py
-    link_service.py
-    metadata_service.py
-    rate_limiter.py
-    redirect_service.py
-  workers/
-    main.py
-docker/
-  Dockerfile
-  entrypoint.sh
-  worker-entrypoint.sh
-alembic/
-  env.py
-  versions/
+## Technology Stack
+
+| Layer | Implementation |
+| --- | --- |
+| HTTP API | FastAPI, Pydantic, Uvicorn |
+| Persistence | PostgreSQL 16, SQLAlchemy 2 async sessions, asyncpg |
+| Migrations | Alembic with psycopg |
+| Cache / rate limits | Redis 7 |
+| Background processing | RabbitMQ 3.13, aio-pika, asyncio workers |
+| Enrichment | HTTPX, Beautiful Soup, qrcode |
+| Local runtime / checks | Docker Compose, pytest, Ruff, GitHub Actions |
+
+Direct dependencies are pinned in `requirements.txt` and `requirements-dev.txt`; `requirements-constraints.txt` also pins the resolved transitive dependencies for repeatable installs.
+
+## Request / Redirect Flow
+
+1. `POST /api/v1/links` validates the URL, alias, and expiration, inserts a link, and warms Redis. An optional bearer token attaches ownership. The response includes a management token; retain it to read link details, previews, QR codes, and analytics.
+2. `GET /{short_code}` checks the local TTL cache, Redis, then PostgreSQL. Missing links return 404; expired links return 410. Successful resolution returns a 307 with the original destination.
+3. FastAPI background tasks enqueue `link.enrich` after creation and `click.track` after redirects. Workers fetch metadata/generate QR SVGs or persist click events and update daily statistics.
+4. Failed RabbitMQ publication falls back to Redis lists. Workers consume those lists too, with bounded retries and a Redis dead-letter list. This is a best-effort fallback, not a guarantee of lossless delivery.
+
+Interactive API documentation is available at `/docs` in development; `/` serves the bundled API reference page. Auth routes live under `/api/v1/auth`, owned links at `/api/v1/users/me/urls`, and owner-only statistics at `/api/v1/urls/{url_id}/stats`.
+
+## Storage Strategy
+
+- `links` stores the destination, unique public UUID and short code, nullable owner, expiration, management-token hash, click total, preview metadata, and QR SVG. PostgreSQL migrations use JSONB for previews.
+- `users` and `refresh_tokens` store account and refresh-token lifecycle data. Passwords use scrypt hashing.
+- `click_events` records individual clicks with a unique request UUID to deduplicate database ingestion. Client IPs are HMAC-hashed before queuing.
+- `link_daily_stats` has one row per link/date and is updated with a PostgreSQL upsert. Analytics reads use these aggregates plus a limited recent-event query.
+- Redis holds redirect payloads and misses, rate-limit counters, sharded click counters, and HyperLogLog visitor estimates. Local caches are per API process; expiration is checked before returning a cached destination.
+
+## Local Development
+
+Install Docker with the Compose v2 plugin. From the repository root:
+
+```sh
+cp .env.example .env
 ```
 
-## Database schema
+PowerShell: `Copy-Item .env.example .env`. Replace `SECRET_KEY`, `POSTGRES_PASSWORD`, and `RABBITMQ_PASSWORD` with separate random values. With Python available, run `python -c "import secrets; print(secrets.token_hex(32))"` for each value. Keep `.env` private; it is ignored by Git and excluded from the Docker build context.
 
-### `links`
+```sh
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps
+```
 
-- `id BIGINT PK`
-- `public_id UUID UNIQUE`
-- `short_code VARCHAR(32) UNIQUE`
-- `long_url TEXT`
-- `custom_alias BOOLEAN`
-- `is_active BOOLEAN`
-- `expires_at TIMESTAMPTZ NULL`
-- `click_count BIGINT`
-- `last_clicked_at TIMESTAMPTZ NULL`
-- `metadata_status VARCHAR(32)`
-- `preview_metadata JSONB NULL`
-- `qr_svg TEXT NULL`
-- `manage_token_hash VARCHAR(128)`
-- `created_at TIMESTAMPTZ`
-- `updated_at TIMESTAMPTZ`
+- API/reference: <http://localhost:8000>
+- Swagger UI: <http://localhost:8000/docs>
+- RabbitMQ management: <http://localhost:15672> (use the credentials in `.env`)
 
-### `click_events`
+Published ports bind to loopback. PostgreSQL, Redis, and the AMQP port are accessible only within the Compose network. Keep `DATABASE_HOST=db`, `REDIS_HOST=redis`, and `RABBITMQ_HOST=rabbitmq` for this setup.
 
-- append-heavy raw event table for recent drill-down
-- stores `link_id`, `occurred_at`, `referer`, `user_agent`, `client_ip_hash`, `country_code`, `cache_status`
+Create a link in Swagger UI or, in a POSIX shell:
 
-### `link_daily_stats`
-
-- aggregate table keyed by `(link_id, bucket_date)`
-- stores `clicks` and `unique_visitors`
-- powers analytics endpoints without scanning raw events
-
-## Short code generation strategy
-
-- Default short codes are cryptographically random using a 57-character alphabet.
-- Default length is `11`, which makes enumeration materially harder than sequential or hashid-based designs.
-- PostgreSQL enforces uniqueness with a unique constraint on `short_code`.
-- On collision, the service retries code generation up to `short_code_max_retries`.
-- Custom aliases are validated against a strict pattern and blocked for reserved routes such as `api`, `docs`, and `healthz`.
-
-Why this avoids collisions and enumeration:
-
-- No public sequential IDs are exposed.
-- Codes are non-predictable, not reversible, and not tied to database order.
-- Even if an attacker sees one code, neighboring codes are not inferable.
-
-## Caching strategy
-
-### Redirect path
-
-1. Process-local TTL cache on every API pod absorbs the hottest keys.
-2. Redis stores redirect payloads to avoid repeated PostgreSQL reads.
-3. Negative cache stores misses briefly to avoid repeated DB lookups for garbage codes.
-4. Cache TTL is capped by `expires_at` so expired links do not outlive their validity window.
-5. TTL jitter spreads refreshes to avoid cache stampedes.
-
-### Hot key prevention
-
-- Local per-pod cache removes the very hottest redirects from Redis.
-- Redis analytics counters are sharded with `crc32(client_ip_hash) % N` to avoid single-counter write hotspots.
-- Unique visitors use Redis HyperLogLog to avoid expensive deduplication scans.
-- At higher scale, place a CDN in front of top short links and use Redis replicas or cluster mode.
-
-## Redis usage
-
-- `link:data:{short_code}`: redirect cache payload
-- `link:miss:{short_code}`: short-lived negative cache
-- `ratelimit:{scope}:{subject}:{bucket}`: rate limiting counters
-- `analytics:clicks:{link_id}:{date}:{shard}`: sharded click counters
-- `analytics:uv:{link_id}:{date}`: HyperLogLog for unique visitor approximation
-
-## RabbitMQ usage
-
-Queues:
-
-- `click.track`: created on every redirect, consumed by analytics workers
-- `link.enrich`: created on link creation, consumed by enrichment workers
-
-Why RabbitMQ is in the design:
-
-- Redirect responses stay fast because analytics writes happen off-path.
-- Preview fetching and QR generation are slow I/O tasks and should not block creation requests.
-- Worker count can scale independently from API pods.
-
-## Background workers
-
-`app/workers/main.py` runs two consumers:
-
-- `click.track`
-  - writes raw click event rows
-  - updates `links.click_count`
-  - upserts `link_daily_stats`
-  - updates Redis sharded counters and HyperLogLog
-- `link.enrich`
-  - fetches preview metadata from the target URL
-  - generates QR SVG for the short URL
-  - stores metadata and QR payload in PostgreSQL
-
-## API endpoints
-
-### Public
-
-- `POST /api/v1/links`
-  - create a short URL
-  - supports custom alias and expiration
-- `GET /{short_code}`
-  - redirect to target URL
-
-### Management
-
-Management uses `X-Manage-Token`, returned when a short link is created.
-
-- `GET /api/v1/links/{short_code}`
-- `GET /api/v1/links/{short_code}/preview`
-- `GET /api/v1/links/{short_code}/qr`
-- `GET /api/v1/links/{short_code}/analytics?days=30`
-
-### Health
-
-- `GET /healthz`
-
-## Example request
-
-```bash
+```sh
 curl -X POST http://localhost:8000/api/v1/links \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com/pricing",
-    "custom_alias": "launch-2026",
-    "expires_at": "2026-12-31T23:59:59Z"
-  }'
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/","custom_alias":"demo-link"}'
+curl -i http://localhost:8000/demo-link
 ```
 
-Example response:
+PowerShell users can use `Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/links -ContentType application/json -Body '{"url":"https://example.com/","custom_alias":"demo-link"}'`.
 
-```json
-{
-  "short_code": "launch-2026",
-  "short_url": "http://localhost:8000/launch-2026",
-  "url": "https://example.com/pricing",
-  "custom_alias": true,
-  "expires_at": "2026-12-31T23:59:59Z",
-  "metadata_status": "pending",
-  "created_at": "2026-03-06T10:00:00Z",
-  "manage_token": "..."
-}
+The existing API service name is `url-shotener-api` (spelling retained). Use `docker compose logs url-shotener-api worker migrate` for diagnostics. After code edits, rerun `docker compose up --build -d`. `docker compose down` stops the stack and retains named data volumes; existing volumes retain their original database/broker credentials.
+
+## Database Migrations
+
+Compose runs `alembic upgrade head` in the one-shot `migrate` service before the API and worker start. Migration history covers the initial link/analytics schema followed by authentication and ownership.
+
+```sh
+docker compose run --rm migrate alembic heads
+docker compose run --rm migrate alembic history
+docker compose run --rm migrate alembic current
+docker compose run --rm migrate
 ```
 
-## Running locally
+The last command applies pending migrations. Connection settings come from the environment through `app/core/config.py`; `alembic.ini` contains no credentials. Migration files live in `alembic/versions/`.
 
-```bash
-docker compose up --build
+## Testing
+
+Use Python 3.12. From the repository root:
+
+```sh
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+python -m ruff check .
+python -m pytest
+python -m alembic heads
+python -m alembic upgrade head --sql
 ```
 
-Services:
+On PowerShell, activate with `.venv\Scripts\Activate.ps1`, or invoke `.venv\Scripts\python.exe` directly in place of `python`.
 
-- API: `http://localhost:8000`
-- Swagger UI: `http://localhost:8000/docs`
-- RabbitMQ management: `http://localhost:15672`
+Tests exercise real API routes and SQLAlchemy service logic against an isolated in-memory SQLite database. The existing Redis test double replaces the external cache and RabbitMQ is deliberately unavailable, exercising fallback job publication. No running infrastructure or `.env` is required for the default development settings.
 
-## Production notes for 10M redirects/day
+Coverage includes authentication/refresh rotation, ownership restrictions, creation and management, collision retries, duplicate/invalid aliases, redirects through all cache layers, negative-cache invalidation, expiration, and connection-URL credential encoding. These tests do **not** validate PostgreSQL-specific analytics upserts, real Redis HyperLogLog behavior, or broker delivery/recovery. GitHub Actions runs the full suite, Ruff, Compose validation, and offline migration SQL generation. MyPy and repository-wide formatting enforcement are not configured.
 
-10M redirects/day is about 116 requests/second on average, with peak traffic much higher. This design handles that by:
+## Scaling Considerations
 
-- keeping redirect requests mostly in memory and Redis
-- making redirect writes asynchronous
-- using pooled PostgreSQL connections
-- storing analytics in aggregate form for reads
-- letting API pods and worker pods scale independently
+There are no measured capacity or load-test results in this repository. Potential next steps should follow profiling: batch analytics writes, partition/retain raw events, monitor cache hit rates and queue lag, budget PostgreSQL connections across API processes, and evaluate independent API/worker replication behind a load balancer.
 
-### Basic load optimization ideas
+The supplied stack runs single instances of PostgreSQL, Redis, and RabbitMQ; it is not highly available. More replicas require an explicit cache invalidation strategy and operational work on failover, backups, observability, and recovery testing.
 
-- Put a CDN or edge cache in front of the redirect endpoint for the most popular links.
-- Split redirect traffic from management traffic into separate deployments.
-- Use PostgreSQL partitioning for `click_events` by day or month.
-- Add Redis replicas or Redis Cluster for read-heavy cache workloads.
-- Use PgBouncer in transaction mode if pod count grows.
-- Use multi-stage Docker builds and run multiple API replicas behind a real L7 load balancer.
+## Project Status
 
-## Bonus
+A supporting backend/database engineering portfolio project with a runnable local stack and focused automated tests. The bundled UI is an API reference; a separate frontend and link update/delete endpoints are not implemented.
 
-### Prevent enumeration attacks
+Known operational limits: background tasks have no transactional outbox, RabbitMQ publisher confirms are disabled, and Redis fallback lists remove a job before processing, so crashes can lose work. Redis click counters can overcount retries even though PostgreSQL event insertion is deduplicated. Raw events have no automated retention, and visitor estimates depend on Redis state. Device breakdowns are currently empty placeholders.
 
-- Use random high-entropy short codes rather than sequential IDs.
-- Keep code length at 10 to 12 characters for public links.
-- Do not expose internal numeric IDs anywhere.
-- Separate management access from the public short code using `X-Manage-Token`.
-- Rate limit both creation and redirect abuse paths.
-- Reserve sensitive route prefixes so aliases cannot shadow internal endpoints.
-
-### Avoid database bottlenecks
-
-- Redirects read from local cache and Redis first.
-- Misses are negative-cached.
-- Click writes are queued and processed asynchronously.
-- Analytics reads use `link_daily_stats`, not raw event scans.
-- Raw event retention should be short in PostgreSQL once a long-term pipeline exists.
-
-### Scale to 100M redirects/day
-
-- Front redirect traffic with a CDN or edge worker for cacheable popular links.
-- Run dedicated redirect-only API pods with minimal middleware.
-- Move from per-click PostgreSQL writes to batched worker flushes.
-- Store raw click stream in Kafka or RabbitMQ-to-Kafka bridge, then push to ClickHouse, BigQuery, or S3+Athena.
-- Keep PostgreSQL for link metadata and aggregates only.
-- Use Redis Cluster and partition hot counters across shards.
-- Introduce read replicas for metadata and multi-region edge redirectors if latency matters globally.
-
-### Add a real analytics pipeline
-
-Recommended evolution:
-
-1. Keep RabbitMQ for operational async tasks.
-2. Mirror click events into Kafka for durable, replayable analytics ingestion.
-3. Feed a stream processor that enriches geo/device/referrer data.
-4. Sink raw events into ClickHouse or BigQuery for ad hoc analytics.
-5. Continue serving the API from pre-aggregated tables or materialized views.
-
-## Important implementation tradeoffs
-
-- This repo stores QR SVG in PostgreSQL for simplicity. At larger scale, move QR artifacts to object storage and save a pointer.
-- This repo stores raw click events in PostgreSQL to keep the example self-contained. At 100M/day, move raw events to an OLAP store.
-- Metadata fetching is best-effort. In production, add robots rules, outbound fetch controls, size limits, and retry policies.
-
-## Key code entry points
-
-- Redirect path: `app/api/routes/redirects.py`, `app/services/redirect_service.py`
-- Link creation: `app/api/routes/links.py`, `app/services/link_service.py`
-- Async analytics ingestion: `app/workers/main.py`, `app/services/analytics_service.py`
-- Metadata and QR generation: `app/services/metadata_service.py`
-- Infrastructure wiring: `app/main.py`, `docker-compose.yml`, `alembic/versions/20260306_0001_initial.py`
+Metadata fetching checks public IPs and redirects and limits time/body size, but DNS resolution is checked separately from the HTTP connection; deployment needs outbound network controls against DNS rebinding. Before exposing a hosted instance, configure production secrets, HTTPS, secure cookies/CORS, trusted proxies, and abuse controls. Public source availability does not imply production deployment readiness.

@@ -7,6 +7,9 @@ x-app-environment: &app-environment
   CORS_ALLOWED_HEADERS: ${CORS_ALLOWED_HEADERS:-*}
   CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-true}
   SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+  JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+  JWT_ACCESS_TOKEN_TTL_MINUTES: ${JWT_ACCESS_TOKEN_TTL_MINUTES:-15}
+  JWT_REFRESH_TOKEN_TTL_DAYS: ${JWT_REFRESH_TOKEN_TTL_DAYS:-30}
   AUTH_RETURN_REFRESH_TOKEN_IN_BODY: ${AUTH_RETURN_REFRESH_TOKEN_IN_BODY:-false}
   REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-refresh_token}
   REFRESH_COOKIE_DOMAIN: ${REFRESH_COOKIE_DOMAIN:-}
@@ -40,7 +43,7 @@ services:
       db:
         condition: service_healthy
     restart: "no"
-  networks:
+    networks:
       - url-shortener-local
 
   url-shotener-api:
@@ -49,10 +52,14 @@ services:
       dockerfile: docker/Dockerfile
     command: ["/app/docker/entrypoint.sh"]
     environment: *app-environment
+    ports:
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -77,11 +84,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
     networks:
-        - url-shortener-local
+      - url-shortener-local
 
   db:
     image: postgres:16-alpine
@@ -98,7 +107,7 @@ services:
       retries: 10
     restart: unless-stopped
     networks:
-        - url-shortener-local
+      - url-shortener-local
 
   redis:
     image: redis:7-alpine
@@ -116,6 +125,8 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
+    ports:
+      - "127.0.0.1:15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
@@ -137,8 +148,6 @@ volumes:
   rabbitmq_data:
 
 networks:
-  web:
-    external: true
   url-shortener-local:
     external: false
     driver: bridge
